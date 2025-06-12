@@ -65,37 +65,33 @@ def calculate_accuracy(correct_letters: int, total_letters: int) -> float:
 	return accuracy
 
 def calculate_stats(text, text_input, start_time, end_time):
+    word_count = 0
+    correct_letters = 0
+    total_letters = sum(len(line) for line in text)
+    current_streak = 0
+    max_streak = 0
+    
+    # 计算正确字符数
+    for target_line, input_line in zip(text, text_input):
+        for i in range(min(len(target_line), len(input_line))):
+            if target_line[i] == input_line[i]:
+                correct_letters += 1
+                current_streak += 1
+                if current_streak > max_streak:
+                    max_streak = current_streak
+            else:
+                current_streak = 0
+    
+    # 计算WPM（每分钟字数）
+    elapsed_time = end_time - start_time
+    minutes = elapsed_time / 60
+    wpm = (correct_letters / 5) / minutes  # 假设5个字符算一个词
+    
+    # 计算准确率
+    accuracy = calculate_accuracy(correct_letters, total_letters)
+    incorrect_letters = total_letters - correct_letters
 
-	word_count = 0
-	correct_letters = 0
-	total_letters = len(text)
-	current_streak = 0
-	max_streak = 0
-		
-	# all this crap to transform the text
-	text_list = text.split()
-	joined_text_input = ''.join(text_input)
-	words_text_input = joined_text_input.split()
-
-	for original_word, user_word in zip(text_list, words_text_input):
-		if original_word == user_word:
-			word_count += 1
-
-	wpm = calculate_wpm(start_time, end_time, word_count)
-
-	for i in range(min(len(text), len(text_input))):
-		if text[i] == text_input[i]:
-			correct_letters += 1
-			current_streak += 1
-			if current_streak > max_streak:
-				max_streak = current_streak
-		else:
-			current_streak = 0
-
-	accuracy = calculate_accuracy(correct_letters, total_letters)
-	incorrect_letters = total_letters - correct_letters
-
-	return wpm, accuracy, total_letters, correct_letters, incorrect_letters, max_streak
+    return wpm, accuracy, total_letters, correct_letters, incorrect_letters, max_streak
 
 def clear_console():
 
@@ -104,24 +100,80 @@ def clear_console():
 	else:
 		_ = os.system("cls")
 
-def display_text(stdscr, target, current, wpm=0):
+def display_text(stdscr, target, current_text, current_input="", is_chinese=False):
+    max_y, max_x = stdscr.getmaxyx()
+    try:
+        # 清屏
+        stdscr.clear()
+        
+        # 显示标题
+        title = "打字测试" if is_chinese else "Typing Test"
+        stdscr.addstr(0, 0, title)
+        
+        # 显示目标文本
+        for i, line in enumerate(target):
+            if i >= max_y - 4:  # 留出底部空间
+                break
+            try:
+                # 显示目标行
+                stdscr.addstr(i + 2, 0, f"{i+1}. {line}")
+                # 如果有对应的输入，显示在目标行后面
+                if i < len(current_text):
+                    input_line = current_text[i]
+                    stdscr.addstr(i + 2, len(f"{i+1}. {line}") + 2, " | ")
+                    for j, char in enumerate(input_line):
+                        if j >= max_x - len(f"{i+1}. {line}") - 5:
+                            break
+                        if is_chinese and not is_chinese_char(char):
+                            color = curses.color_pair(3)
+                        else:
+                            correct_char = line[j] if j < len(line) else ''
+                            color = curses.color_pair(1) if char == correct_char else curses.color_pair(2)
+                        stdscr.addstr(i + 2, len(f"{i+1}. {line}") + 5 + j, char, color)
+            except curses.error:
+                pass
+        
+        # 显示当前输入行
+        current_line_num = len(current_text)
+        if current_line_num < len(target):
+            try:
+                # 显示当前输入提示
+                prompt = "当前输入: " if is_chinese else "Current input: "
+                stdscr.addstr(current_line_num + 2, 0, prompt)
+                
+                # 显示当前输入内容
+                for i, char in enumerate(current_input):
+                    if i >= max_x - len(prompt) - 2:
+                        break
+                    if is_chinese and not is_chinese_char(char):
+                        color = curses.color_pair(3)
+                    else:
+                        correct_char = target[current_line_num][i] if i < len(target[current_line_num]) else ''
+                        color = curses.color_pair(1) if char == correct_char else curses.color_pair(2)
+                    stdscr.addstr(current_line_num + 2, len(prompt) + i, char, color)
+            except curses.error:
+                pass
+        
+        # 显示帮助信息
+        help_text = "按回车键确认当前行，按ESC键退出" if is_chinese else "Press Enter to confirm, ESC to exit"
+        try:
+            stdscr.addstr(max_y - 1, 0, help_text)
+        except curses.error:
+            pass
+            
+        # 刷新屏幕
+        stdscr.refresh()
+        
+    except Exception as e:
+        try:
+            stdscr.addstr(0, 0, f"Display Error: {str(e)}")
+            stdscr.refresh()
+        except:
+            pass
 
-	max_y, max_x = stdscr.getmaxyx()
-	try:
-		# 分页显示或截断处理
-		display_target = target[:max_x-1]
-		stdscr.addstr(display_target)
-		
-		for i, char in enumerate(current):
-			if i >= max_x-1:
-				break
-			correct_char = target[i]
-			color = curses.color_pair(1)
-			if char != correct_char:
-				color = curses.color_pair(2)
-			stdscr.addstr(0, i, char, color)
-	except curses.error:
-		pass  # 忽略curses相关错误
+def is_chinese_char(char):
+    """判断字符是否为中文"""
+    return '\u4e00' <= char <= '\u9fff'
 
 def save_game_data(wpm, accuracy):
 
@@ -214,36 +266,50 @@ def game(stdscr, text, language="chinese"):
     curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
     curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLACK) 
 
-    target_text = text
+    target_text = text if isinstance(text, list) else [text]
     current_text = []
+    current_input = ""
+    is_chinese_mode = language == "chinese"
 
     start_time = time.time()
 
     while True:
-        stdscr.clear()
-        display_text(stdscr, target_text, current_text)
-        stdscr.refresh()
+        # 显示文本
+        display_text(stdscr, target_text, current_text, current_input, is_chinese=is_chinese_mode)
 
-        if "".join(current_text) == target_text:
+        # 检查是否完成所有句子
+        if len(current_text) == len(target_text) and all(len(a) == len(b) for a, b in zip(current_text, target_text)):
             stdscr.nodelay(False)
             break
 
         try:
             key = stdscr.getkey()
-        except:
+            
+            # Windows 特殊键处理
+            if key == '\n' or key == '\r' or key == 'KEY_ENTER':  # Enter 键
+                if current_input:
+                    current_text.append(current_input)
+                    current_input = ""
+                    if len(current_text) >= len(target_text):
+                        break
+            elif key == '\x08' or key == '\x7f' or key == 'KEY_BACKSPACE':  # Backspace 键
+                if current_input:
+                    current_input = current_input[:-1]
+            elif key == '\x1b':  # ESC 键
+                break
+            elif len(key) == 1:  # 普通字符
+                current_input += key
+            
+        except curses.error:
             continue
-
-        if ord(key) == 10:
-            break
-
-        if key in ("KEY_BACKSPACE", '\b', "\x7f"):
-            if len(current_text) > 0:
-                current_text.pop()
-        elif len(current_text) < len(target_text):
-            current_text.append(key)
-        else:
-            stdscr.clear()
-            break
+        except Exception as e:
+            try:
+                stdscr.addstr(0, 0, f"Input Error: {str(e)}")
+                stdscr.refresh()
+                time.sleep(1)
+            except:
+                pass
+            continue
 
     return current_text
 
@@ -287,7 +353,8 @@ def run(language: str = typer.Option(None, "--lang", help="Language to use"),
             data_path = pkg_resources.resource_filename(__name__, f"data/chinese/long-sentences.json")
             with open(data_path, "r", encoding="utf-8") as f:
                 text_data = json.load(f)
-                text = random.choice(text_data["content"])  # 随机选择一条长难句
+                # 使用整个数组作为测试内容
+                text = text_data["content"]
         except Exception as e:
             typer.echo(f"加载中文文本时出错: {str(e)}")
             raise typer.Abort()
@@ -295,10 +362,11 @@ def run(language: str = typer.Option(None, "--lang", help="Language to use"),
         if quotes:
             data_path = pkg_resources.resource_filename(__name__, f"data/quotes/{language}.json")
             text, author, length = select_random_quote(data_path)
+            text = [text]  # 转换为列表以保持一致性
         else:
             data_path = pkg_resources.resource_filename(__name__, f"data/words/{language[0:2]}-1000.txt")
             text = select_random_words(data_path, words)
-            text = ' '.join(text)
+            text = [' '.join(text)]  # 转换为列表以保持一致性
 
     clear_console()
     Screen.wrapper(intro)
