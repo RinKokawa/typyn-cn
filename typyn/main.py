@@ -102,15 +102,22 @@ def clear_console():
 
 def display_text(stdscr, target, current, wpm=0):
 
-	stdscr.addstr(target)
-
-	for i, char in enumerate(current):
-		correct_char = target[i]
-		color = curses.color_pair(1)
-		if char != correct_char:
-			color = curses.color_pair(2)
-
-		stdscr.addstr(0, i, char, color)
+	max_y, max_x = stdscr.getmaxyx()
+	try:
+		# 分页显示或截断处理
+		display_target = target[:max_x-1]
+		stdscr.addstr(display_target)
+		
+		for i, char in enumerate(current):
+			if i >= max_x-1:
+				break
+			correct_char = target[i]
+			color = curses.color_pair(1)
+			if char != correct_char:
+				color = curses.color_pair(2)
+			stdscr.addstr(0, i, char, color)
+	except curses.error:
+		pass  # 忽略curses相关错误
 
 def save_game_data(wpm, accuracy):
 
